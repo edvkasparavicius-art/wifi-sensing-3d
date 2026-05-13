@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#050810">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Wi-Fi Sensing 3D</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #050810;
+            --surface: #0c1120;
+            --border: #16233d;
+            --ink: #dce4f0;
+            --ink2: #6880a4;
+            --ink3: #354566;
+            --blue: #3b82f6;
+            --cyan: #06d6f2;
+            --green: #22c97a;
+            --red: #ef4456;
+            --amber: #f5a623;
+            --violet: #8b5cf6;
+            --safe-b: env(safe-area-inset-bottom, 0px);
+        }
+
+        html, body { height: 100%; overflow: hidden; }
+        body {
+            font-family: 'Sora', sans-serif;
+            background: var(--bg);
+            color: var(--ink);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ═══ 3D Canvas ═══ */
+        #scene {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+        }
+
+        /* ═══ HUD Overlay ═══ */
+        .hud {
+            position: fixed;
+            inset: 0;
+            z-index: 10;
+            pointer-events: none;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .hud > * { pointer-events: auto; }
+
+        /* Top bar */
+        .hud-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        .hud-brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: #0c1120cc;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
+        .hud-brand__icon {
+            width: 28px; height: 28px;
+            border-radius: 7px;
+            background: linear-gradient(135deg, var(--blue), var(--violet));
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px;
+        }
+        .hud-brand__text {
+            font-size: 0.85rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+        }
+        .hud-brand__tag {
+            font-size: 0.55rem;
+            font-weight: 600;
+            color: var(--cyan);
+            background: #06d6f215;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-left: 4px;
+        }
+
+        .hud-alert-pill {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 8px 14px;
+            background: #0c1120cc;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            transition: all 0.4s;
+        }
+        .hud-alert-pill .dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 6px #22c97a66;
+        }
+        .hud-alert-pill.motion {
+            border-color: #ef445666;
+            box-shadow: 0 0 20px #ef445633;
+        }
+        .hud-alert-pill.motion .dot {
+            background: var(--red);
+            box-shadow: 0 0 8px #ef445688;
+            animation: blink 0.5s infinite;
+        }
+        .hud-alert-pill.presence {
+            border-color: #f5a62344;
+        }
+        .hud-alert-pill.presence .dot {
+            background: var(--amber);
+            box-shadow: 0 0 6px #f5a62366;
+        }
+        @keyframes blink {
+            0%,100% { opacity: 1; } 50% { opacity: 0.2; }
+        }
+
+        /* Center info (event flash) */
+        .hud-center {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 20;
+        }
+        .hud-center.visible { opacity: 1; }
+        .hud-center__icon {
+            font-size: 48px;
+            margin-bottom: 8px;
+            animation: pop 0.4s ease-out;
+        }
+        @keyframes pop {
+            0% { transform: scale(0.5); } 60% { transform: scale(1.15); } 100% { transform: scale(1); }
+        }
+        .hud-center__text {
+            font-size: 1.1rem;
+            font-weight: 700;
+            text-shadow: 0 2px 20px #000000aa;
+        }
+        .hud-center__sub {
+            font-size: 0.75rem;
+            color: var(--ink2);
+            margin-top: 4px;
+        }
+
+        /* Bottom panel */
+        .hud-bottom {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding-bottom: var(--safe-b);
+        }
+
+        /* Metrics row */
+        .hud-metrics {
+            display: flex;
+            gap: 6px;
+        }
+        .hud-m {
+            flex: 1;
+            padding: 10px 8px;
+            background: #0c1120cc;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            text-align: center;
+        }
+        .hud-m__val {
+            font-family: 'DM Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: var(--cyan);
+        }
+        .hud-m__lbl {
+            font-size: 0.55rem;
+            color: var(--ink3);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 3px;
+        }
+
+        /* Controls row */
+        .hud-ctrl {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .hud-ctrl__slider-wrap {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #0c1120cc;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .hud-ctrl__slider-label {
+            font-size: 0.7rem;
+            color: var(--ink2);
+            white-space: nowrap;
+        }
+        .hud-ctrl__slider-val {
+            font-family: 'DM Mono', monospace;
+            font-size: 0.72rem;
+            color: var(--cyan);
+            min-width: 32px;
+            text-align: right;
+        }
+        input[type="range"] {
+            -webkit-appearance: none;
+            flex: 1;
+            height: 4px;
+            border-radius: 2px;
+            background: linear-gradient(90deg, var(--green), var(--amber), var(--red));
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px; height: 20px;
+            border-radius: 50%;
+            background: var(--ink);
+            border: 3px solid var(--surface);
+            box-shadow: 0 2px 8px #00000066;
+        }
+        .hud-btn {
+            padding: 10px 14px;
+            font-family: 'Sora', sans-serif;
+            font-size: 0.72rem;
+            font-weight: 600;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #0c1120cc;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            color: var(--ink);
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .hud-btn:active { transform: scale(0.95); }
+
+        /* View mode pills */
+        .hud-views {
+            display: flex;
+            gap: 4px;
+            justify-content: center;
+        }
+        .hud-view {
+            padding: 6px 12px;
+            font-family: 'Sora', sans-serif;
+            font-size: 0.68rem;
+            font-weight: 600;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #0c1120aa;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            color: var(--ink2);
+            cursor: pointer;
+        }
+        .hud-view.active {
+            background: #3b82f622;
+            border-color: #3b82f644;
+            color: var(--blue);
+        }
+        .hud-view:active { transform: scale(0.95); }
+
+        /* Loading */
+        .loading {
+            position: fixed;
+            inset: 0;
+            background: var(--bg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            z-index: 999;
+            transition: opacity 0.8s;
+        }
+        .loading.hidden { opacity: 0; pointer-events: none; }
+        .loading-spinner {
+            width: 36px; height: 36px;
+            border: 3px solid var(--border);
+            border-top-color: var(--blue);
+            border-radius: 50%;
+            animation: sp 0.7s linear infinite;
+        }
+        @keyframes sp { to { transform: rotate(360deg); } }
+        .loading-msg { font-size: 0.82rem; color: var(--ink2); }
+    </style>
+</head>
+<body>
+<div class="loading" id="loading">
+    <div class="loading-spinner"></div>
+    <div class="loading-msg">Ruošiamas 3D vaizdas...</div>
+</div>
+
+<canvas id="scene"></canvas>
+
+<div class="hud">
+    <!-- Top -->
+    <div class="hud-top">
+        <div class="hud-brand">
+            <div class="hud-brand__icon">📡</div>
+            <span class="hud-brand__text">Wi-Fi Sensing</span>
+            <span class="hud-brand__tag">3D</span>
+        </div>
+        <div class="hud-alert-pill" id="alertPill">
+            <span class="dot"></span>
+            <span id="alertText">Ramu</span>
+        </div>
+    </div>
+
+    <!-- Center flash -->
+    <div class="hud-center" id="centerFlash">
+        <div class="hud-center__icon" id="flashIcon">⚠</div>
+        <div class="hud-center__text" id="flashText">Judesys aptiktas!</div>
+        <div class="hud-center__sub" id="flashSub">Patikimumas: 87%</div>
+    </div>
+
+    <!-- Bottom -->
+    <div class="hud-bottom">
+        <!-- View modes -->
+        <div class="hud-views">
+            <button class="hud-view active" data-view="wave">🌊 Bangos</button>
+            <button class="hud-view" data-view="room">🏠 Kambarys</button>
+            <button class="hud-view" data-view="spectrum">📊 Spektras</button>
+        </div>
+
+        <!-- Metrics -->
+        <div class="hud-metrics">
+            <div class="hud-m">
+                <div class="hud-m__val" id="m3Rssi">—</div>
+                <div class="hud-m__lbl">RSSI</div>
+            </div>
+            <div class="hud-m">
+                <div class="hud-m__val" id="m3Var">—</div>
+                <div class="hud-m__lbl">Dispersija</div>
+            </div>
+            <div class="hud-m">
+                <div class="hud-m__val" id="m3Fft">—</div>
+                <div class="hud-m__lbl">FFT Hz</div>
+            </div>
+            <div class="hud-m">
+                <div class="hud-m__val" id="m3Conf">—</div>
+                <div class="hud-m__lbl">Patikimumas</div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="hud-ctrl">
+            <div class="hud-ctrl__slider-wrap">
+                <span class="hud-ctrl__slider-label">Jautrumas</span>
+                <input type="range" id="sensRange" min="0.3" max="3.0" step="0.1" value="1.0">
+                <span class="hud-ctrl__slider-val" id="sensDisp">1.0x</span>
+            </div>
+            <button class="hud-btn" id="btnRecal3">🔄</button>
+            <button class="hud-btn" id="btnPause3">⏸</button>
+        </div>
+    </div>
+</div>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.min.js"
+    }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ═══════════════════════════════════════
+// KONFIGŪRACIJA
+// ═══════════════════════════════════════
+const SAMPLE_RATE = 10;
+const GRID_X = 40;  // bangos tinklelio dydis
+const GRID_Z = 40;
+const WAVE_SCALE = 3.0;
+const MOTION_THRESHOLD = 2.5;
+const PRESENCE_THRESHOLD = 1.2;
+const CALIBRATION_COUNT = 60;
+
+// ═══════════════════════════════════════
+// DOM
+// ═══════════════════════════════════════
+const alertPill = document.getElementById('alertPill');
+const alertText = document.getElementById('alertText');
+const centerFlash = document.getElementById('centerFlash');
+const flashIcon = document.getElementById('flashIcon');
+const flashText = document.getElementById('flashText');
+const flashSub = document.getElementById('flashSub');
+const m3Rssi = document.getElementById('m3Rssi');
+const m3Var = document.getElementById('m3Var');
+const m3Fft = document.getElementById('m3Fft');
+const m3Conf = document.getElementById('m3Conf');
+const sensRange = document.getElementById('sensRange');
+const sensDisp = document.getElementById('sensDisp');
+const btnRecal3 = document.getElementById('btnRecal3');
+const btnPause3 = document.getElementById('btnPause3');
+const loadingEl = document.getElementById('loading');
+
+// ═══════════════════════════════════════
+// BŪSENA
+// ═══════════════════════════════════════
+let sensitivity = 1.0;
+let paused = false;
+let calibrated = false;
+let calibCount = 0;
+let baselineRssi = 0;
+let rssiBuffer = [];
+let filteredRssi = [];
+let csiBuffer = [];
+let t = 0;
+let lastAlertTime = 0;
+let currentView = 'wave';
+let flashTimeout = null;
+
+// ═══════════════════════════════════════
+// THREE.JS SCENA
+// ═══════════════════════════════════════
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x050810);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x050810, 0.035);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(0, 18, 22);
+camera.lookAt(0, 0, 0);
+
+// ═══ Apšvietimas ═══
+const ambientLight = new THREE.AmbientLight(0x1a2a4a, 0.6);
+scene.add(ambientLight);
+
+const dirLight = new THREE.DirectionalLight(0x3b82f6, 0.4);
+dirLight.position.set(10, 20, 5);
+scene.add(dirLight);
+
+const pointLight1 = new THREE.PointLight(0x3b82f6, 1.2, 40);
+pointLight1.position.set(-8, 8, -8);
+scene.add(pointLight1);
+
+const pointLight2 = new THREE.PointLight(0x8b5cf6, 0.8, 40);
+pointLight2.position.set(8, 5, 8);
+scene.add(pointLight2);
+
+const alertLight = new THREE.PointLight(0xff0000, 0, 50);
+alertLight.position.set(0, 12, 0);
+scene.add(alertLight);
+
+// ═══ Grindų tinklelis ═══
+const gridHelper = new THREE.GridHelper(30, 30, 0x16233d, 0x0c1528);
+gridHelper.position.y = -0.5;
+scene.add(gridHelper);
+
+// ═══ BANGŲ PAVIRŠIUS ═══
+const waveGeo = new THREE.PlaneGeometry(28, 28, GRID_X - 1, GRID_Z - 1);
+waveGeo.rotateX(-Math.PI / 2);
+
+const waveMat = new THREE.MeshPhongMaterial({
+    color: 0x1a3a6a,
+    emissive: 0x0a1a3a,
+    specular: 0x3b82f6,
+    shininess: 60,
+    transparent: true,
+    opacity: 0.75,
+    side: THREE.DoubleSide,
+    wireframe: false,
+    flatShading: false
+});
+
+const waveMesh = new THREE.Mesh(waveGeo, waveMat);
+waveMesh.position.y = 2;
+scene.add(waveMesh);
+
+// Wireframe overlay
+const wireGeo = waveGeo.clone();
+const wireMat = new THREE.MeshBasicMaterial({
+    color: 0x3b82f6,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.12
+});
+const wireMesh = new THREE.Mesh(wireGeo, wireMat);
+wireMesh.position.y = 2.01;
+scene.add(wireMesh);
+
+// ═══ KAMBARIO OBJEKTAI ═══
+const roomGroup = new THREE.Group();
+roomGroup.visible = false;
+scene.add(roomGroup);
+
+// Grindys
+const floorGeo = new THREE.PlaneGeometry(20, 14);
+floorGeo.rotateX(-Math.PI / 2);
+const floorMat = new THREE.MeshPhongMaterial({ color: 0x0e1830, emissive: 0x060c1a });
+const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+floorMesh.position.y = -0.4;
+roomGroup.add(floorMesh);
+
+// Sienos
+function makeWall(w, h, x, y, z, ry) {
+    const geo = new THREE.PlaneGeometry(w, h);
+    const mat = new THREE.MeshPhongMaterial({
+        color: 0x121d35,
+        emissive: 0x080e1a,
+        transparent: true,
+        opacity: 0.4,
+        side: THREE.DoubleSide
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(x, y, z);
+    mesh.rotation.y = ry;
+    roomGroup.add(mesh);
+    return mesh;
+}
+makeWall(20, 6, 0, 2.6, -7, 0);
+makeWall(20, 6, 0, 2.6, 7, 0);
+makeWall(14, 6, -10, 2.6, 0, Math.PI / 2);
+makeWall(14, 6, 10, 2.6, 0, Math.PI / 2);
+
+// Routeris (šaltinis)
+const routerGeo = new THREE.CylinderGeometry(0.3, 0.4, 1.2, 8);
+const routerMat = new THREE.MeshPhongMaterial({ color: 0x22c97a, emissive: 0x0a4a2a });
+const routerMesh = new THREE.Mesh(routerGeo, routerMat);
+routerMesh.position.set(-7, 0.6, -4);
+roomGroup.add(routerMesh);
+
+// Routerio šviesa
+const routerLight = new THREE.PointLight(0x22c97a, 0.8, 15);
+routerLight.position.set(-7, 2, -4);
+roomGroup.add(routerLight);
+
+// Signalo bangos (kambario view)
+const roomRings = [];
+for (let i = 0; i < 5; i++) {
+    const ringGeo = new THREE.RingGeometry(2 + i * 2.5, 2.1 + i * 2.5, 48);
+    ringGeo.rotateX(-Math.PI / 2);
+    const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x22c97a,
+        transparent: true,
+        opacity: 0.15 - i * 0.025,
+        side: THREE.DoubleSide
+    });
+    const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+    ringMesh.position.set(-7, 0.1, -4);
+    roomGroup.add(ringMesh);
+    roomRings.push(ringMesh);
+}
+
+// Žmogaus silhuetas (judesio pozicija)
+const humanGroup = new THREE.Group();
+humanGroup.visible = false;
+// Kūnas
+const bodyGeo = new THREE.CylinderGeometry(0.3, 0.4, 1.6, 8);
+const bodyMat = new THREE.MeshPhongMaterial({ color: 0xef4456, emissive: 0x4a1118 });
+const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+bodyMesh.position.y = 0.8;
+humanGroup.add(bodyMesh);
+// Galva
+const headGeo = new THREE.SphereGeometry(0.3, 12, 8);
+const headMesh = new THREE.Mesh(headGeo, bodyMat);
+headMesh.position.y = 1.9;
+humanGroup.add(headMesh);
+humanGroup.position.set(3, 0, 1);
+roomGroup.add(humanGroup);
+
+// ═══ SPEKTRO 3D JUOSTOS ═══
+const spectrumGroup = new THREE.Group();
+spectrumGroup.visible = false;
+scene.add(spectrumGroup);
+
+const specBars = [];
+const SPEC_COUNT = 20;
+for (let i = 0; i < SPEC_COUNT; i++) {
+    const geo = new THREE.BoxGeometry(0.6, 1, 0.6);
+    const isHuman = i >= 1 && i <= 6; // ~0.15 – 2 Hz range at 10Hz sample
+    const mat = new THREE.MeshPhongMaterial({
+        color: isHuman ? 0x8b5cf6 : 0x3b82f6,
+        emissive: isHuman ? 0x2a1a4a : 0x0a1a3a,
+        transparent: true,
+        opacity: 0.85
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(-10 + i * 1.1, 0.5, 0);
+    spectrumGroup.add(mesh);
+    specBars.push(mesh);
+}
+
+// Spektro pagrindas
+const specFloor = new THREE.PlaneGeometry(24, 12);
+specFloor.rotateX(-Math.PI / 2);
+const specFloorMat = new THREE.MeshPhongMaterial({ color: 0x0a1020, emissive: 0x050810 });
+const specFloorMesh = new THREE.Mesh(specFloor, specFloorMat);
+specFloorMesh.position.y = -0.01;
+spectrumGroup.add(specFloorMesh);
+
+// ═══ Dalelės (aplinka) ═══
+const particleCount = 200;
+const particleGeo = new THREE.BufferGeometry();
+const pPositions = new Float32Array(particleCount * 3);
+for (let i = 0; i < particleCount; i++) {
+    pPositions[i * 3] = (Math.random() - 0.5) * 40;
+    pPositions[i * 3 + 1] = Math.random() * 15;
+    pPositions[i * 3 + 2] = (Math.random() - 0.5) * 40;
+}
+particleGeo.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
+const particleMat = new THREE.PointsMaterial({
+    color: 0x3b82f6,
+    size: 0.06,
+    transparent: true,
+    opacity: 0.4
+});
+const particles = new THREE.Points(particleGeo, particleMat);
+scene.add(particles);
+
+// ═══════════════════════════════════════
+// SIGNALŲ GENERATORIUS
+// ═══════════════════════════════════════
+function gaussRandom() {
+    let u1 = Math.random(), u2 = Math.random();
+    if (u1 < 1e-10) u1 = 1e-10;
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+
+function generateSample() {
+    t += 1.0 / SAMPLE_RATE;
+    const base = -52;
+    const noise = gaussRandom() * 0.4;
+
+    const cycle = t % 22;
+    let motion = 0;
+    if (cycle > 12 && cycle < 17) {
+        motion = 6 * Math.sin(2 * Math.PI * 0.9 * t) + 1.5 * Math.sin(2 * Math.PI * 1.7 * t);
+    }
+
+    let presence = 0;
+    const cycle2 = t % 45;
+    if (cycle2 > 30 && cycle2 < 40) {
+        presence = 0.8 * Math.sin(2 * Math.PI * 0.28 * t);
+    }
+
+    const rssi = base + noise + motion + presence;
+
+    const csi = [];
+    for (let i = 0; i < 30; i++) {
+        let v = 10 + gaussRandom() * 0.08;
+        if (cycle > 12 && cycle < 17) v += gaussRandom() * 2.5;
+        csi.push(v);
+    }
+
+    return { rssi, csi };
+}
+
+// ═══════════════════════════════════════
+// SIGNALŲ APDOROJIMAS
+// ═══════════════════════════════════════
+function processSignal(sample) {
+    rssiBuffer.push(sample.rssi);
+    if (rssiBuffer.length > 50) rssiBuffer.shift();
+
+    const alpha = 0.3;
+    if (filteredRssi.length === 0) {
+        filteredRssi.push(sample.rssi);
+    } else {
+        filteredRssi.push(alpha * sample.rssi + (1 - alpha) * filteredRssi[filteredRssi.length - 1]);
+    }
+    if (filteredRssi.length > 120) filteredRssi.shift();
+
+    csiBuffer.push(sample.csi);
+    if (csiBuffer.length > 20) csiBuffer.shift();
+
+    if (!calibrated) {
+        calibCount++;
+        if (calibCount >= CALIBRATION_COUNT) {
+            let s = 0;
+            for (let i = 0; i < rssiBuffer.length; i++) s += rssiBuffer[i];
+            baselineRssi = s / rssiBuffer.length;
+            calibrated = true;
+            loadingEl.classList.add('hidden');
+        }
+        return null;
+    }
+
+    // Statistika
+    const n = rssiBuffer.length;
+    let mean = 0, variance = 0;
+    for (let i = 0; i < n; i++) mean += rssiBuffer[i];
+    mean /= n;
+    for (let i = 0; i < n; i++) variance += (rssiBuffer[i] - mean) ** 2;
+    variance /= n;
+    const std = Math.sqrt(variance);
+    const delta = Math.abs(mean - baselineRssi);
+
+    // FFT
+    const fft = computeFFT();
+
+    // CSI var
+    let csiVar = 0;
+    if (csiBuffer.length >= 5) {
+        const recent = csiBuffer.slice(-10);
+        const nSub = recent[0].length;
+        let total = 0;
+        for (let s = 0; s < nSub; s++) {
+            let m = 0;
+            for (let i = 0; i < recent.length; i++) m += recent[i][s];
+            m /= recent.length;
+            let v = 0;
+            for (let i = 0; i < recent.length; i++) v += (recent[i][s] - m) ** 2;
+            total += v / recent.length;
+        }
+        csiVar = total / nSub;
+    }
+
+    // Aptikimas
+    const adj = MOTION_THRESHOLD / sensitivity;
+    const rssiScore = delta / Math.max(adj, 0.1);
+    const csiScore = csiVar / Math.max(adj * 0.5, 0.1);
+    let fftScore = 0;
+    if (fft.peakFreq >= 0.1 && fft.peakFreq <= 2.0) {
+        fftScore = fft.peakPower / Math.max(adj * 0.3, 0.1);
+    }
+    const combined = rssiScore * 0.3 + csiScore * 0.5 + fftScore * 0.2;
+    const confidence = Math.min(1.0, combined);
+    const motionDetected = combined > 1.0;
+    const presAdj = PRESENCE_THRESHOLD / sensitivity;
+    const presenceDetected = !motionDetected && (std > presAdj || csiVar > presAdj * 0.3);
+
+    return { motion: motionDetected, presence: presenceDetected, confidence, rssiMean: mean, variance, fftPeakFreq: fft.peakFreq, fftPeakPower: fft.peakPower, fftFreqs: fft.freqs, fftMags: fft.mags, delta, csiVar };
+}
+
+function computeFFT() {
+    const empty = { freqs: [], mags: [], peakFreq: 0, peakPower: 0 };
+    if (filteredRssi.length < 64) return empty;
+    const data = filteredRssi.slice(-64);
+    const N = data.length;
+    const windowed = data.map((v, i) => v * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (N - 1))));
+
+    const freqs = [], mags = [];
+    let peakMag = 0, peakIdx = 0;
+    const half = Math.floor(N / 2);
+    for (let k = 1; k <= half; k++) {
+        let re = 0, im = 0;
+        for (let n = 0; n < N; n++) {
+            const a = 2 * Math.PI * k * n / N;
+            re += windowed[n] * Math.cos(a);
+            im -= windowed[n] * Math.sin(a);
+        }
+        const mag = 2 * Math.sqrt(re * re + im * im) / N;
+        const freq = k * SAMPLE_RATE / N;
+        freqs.push(freq);
+        mags.push(mag);
+        if (mag > peakMag) { peakMag = mag; peakIdx = freqs.length - 1; }
+    }
+    return { freqs: freqs.slice(0, 20), mags: mags.slice(0, 20), peakFreq: freqs[peakIdx] || 0, peakPower: peakMag };
+}
+
+// ═══════════════════════════════════════
+// 3D ATNAUJINIMAI
+// ═══════════════════════════════════════
+let waveTime = 0;
+
+function updateWaveSurface(result) {
+    waveTime += 0.04;
+    const positions = waveMesh.geometry.attributes.position;
+    const wirePos = wireMesh.geometry.attributes.position;
+    const motionAmp = result ? result.confidence * WAVE_SCALE * 2 : 0;
+    const baseAmp = 0.3;
+
+    for (let i = 0; i < positions.count; i++) {
+        const x = positions.getX(i);
+        const z = positions.getZ(i);
+        const dist = Math.sqrt(x * x + z * z);
+
+        // Pagrindinė banga nuo centro
+        let y = Math.sin(dist * 0.4 - waveTime * 2) * baseAmp;
+
+        // Judesio banga
+        if (motionAmp > 0.1) {
+            y += Math.sin(dist * 0.8 - waveTime * 4) * motionAmp * 0.5;
+            y += Math.sin(x * 0.3 + waveTime * 3) * motionAmp * 0.3;
+            y += Math.cos(z * 0.5 - waveTime * 2.5) * motionAmp * 0.2;
+        }
+
+        positions.setY(i, y);
+        wirePos.setY(i, y);
+    }
+    positions.needsUpdate = true;
+    wirePos.needsUpdate = true;
+    waveMesh.geometry.computeVertexNormals();
+}
+
+function updateRoomView(result) {
+    const elapsed = t;
+    // Routerio bangos animacija
+    for (let i = 0; i < roomRings.length; i++) {
+        const scale = 1 + Math.sin(elapsed * 2 - i * 0.8) * 0.1;
+        roomRings[i].scale.set(scale, 1, scale);
+        roomRings[i].material.opacity = 0.12 - i * 0.02 + Math.sin(elapsed * 3) * 0.02;
+    }
+
+    // Žmogaus silhuetas
+    if (result && result.motion) {
+        humanGroup.visible = true;
+        humanGroup.position.x = 3 + Math.sin(elapsed * 1.2) * 2;
+        humanGroup.position.z = 1 + Math.cos(elapsed * 0.8) * 1.5;
+        bodyMat.emissive.setHex(0x6a1118);
+    } else if (result && result.presence) {
+        humanGroup.visible = true;
+        humanGroup.position.x = 3 + Math.sin(elapsed * 0.1) * 0.2;
+        bodyMat.emissive.setHex(0x4a3510);
+    } else {
+        humanGroup.visible = false;
+    }
+}
+
+function updateSpectrum(result) {
+    if (!result || !result.fftMags) return;
+    const maxH = 10;
+    for (let i = 0; i < specBars.length && i < result.fftMags.length; i++) {
+        const target = Math.max(0.15, result.fftMags[i] * maxH);
+        const current = specBars[i].scale.y;
+        specBars[i].scale.y += (target - current) * 0.15;
+        specBars[i].position.y = specBars[i].scale.y * 0.5;
+    }
+}
+
+// ═══════════════════════════════════════
+// KAMERA (auto-sukimas + touch)
+// ═══════════════════════════════════════
+let cameraAngle = 0;
+let cameraRadius = 28;
+let cameraHeight = 18;
+let targetAngle = 0;
+let isDragging = false;
+let lastTouchX = 0;
+
+canvas.addEventListener('touchstart', (e) => {
+    isDragging = true;
+    lastTouchX = e.touches[0].clientX;
+}, { passive: true });
+
+canvas.addEventListener('touchmove', (e) => {
+    if (!isDragging) return;
+    const dx = e.touches[0].clientX - lastTouchX;
+    targetAngle -= dx * 0.005;
+    lastTouchX = e.touches[0].clientX;
+}, { passive: true });
+
+canvas.addEventListener('touchend', () => { isDragging = false; }, { passive: true });
+
+// Mouse for desktop
+canvas.addEventListener('mousedown', (e) => { isDragging = true; lastTouchX = e.clientX; });
+canvas.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    targetAngle -= (e.clientX - lastTouchX) * 0.005;
+    lastTouchX = e.clientX;
+});
+canvas.addEventListener('mouseup', () => { isDragging = false; });
+
+function updateCamera() {
+    if (!isDragging) {
+        targetAngle += 0.002; // auto-sukimas
+    }
+    cameraAngle += (targetAngle - cameraAngle) * 0.05;
+
+    let radius = cameraRadius;
+    let height = cameraHeight;
+    let lookY = 0;
+
+    if (currentView === 'room') {
+        radius = 22;
+        height = 14;
+        lookY = 1;
+    } else if (currentView === 'spectrum') {
+        radius = 20;
+        height = 10;
+        lookY = 3;
+    }
+
+    camera.position.x = Math.sin(cameraAngle) * radius;
+    camera.position.z = Math.cos(cameraAngle) * radius;
+    camera.position.y += (height - camera.position.y) * 0.03;
+    camera.lookAt(0, lookY, 0);
+}
+
+// ═══════════════════════════════════════
+// UI
+// ═══════════════════════════════════════
+function updateHUD(result) {
+    if (!result) return;
+
+    m3Rssi.textContent = result.rssiMean.toFixed(0);
+    m3Var.textContent = result.variance.toFixed(2);
+    m3Fft.textContent = result.fftPeakFreq.toFixed(2);
+    m3Conf.textContent = (result.confidence * 100).toFixed(0) + '%';
+
+    if (result.motion) {
+        alertPill.className = 'hud-alert-pill motion';
+        alertText.textContent = 'JUDESYS!';
+
+        // Šviesos efektas
+        alertLight.intensity = 2;
+        alertLight.color.setHex(0xff3344);
+
+        // Spalvų keitimas
+        waveMat.color.setHex(0x4a1a1a);
+        waveMat.emissive.setHex(0x2a0a0a);
+
+        // Flash pranešimas
+        const now = Date.now();
+        if (now - lastAlertTime > 3000) {
+            lastAlertTime = now;
+            showFlash('⚠', 'Judesys aptiktas!', 'Patikimumas: ' + (result.confidence * 100).toFixed(0) + '%');
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+        }
+    } else if (result.presence) {
+        alertPill.className = 'hud-alert-pill presence';
+        alertText.textContent = 'Buvimas';
+        alertLight.intensity = 0.5;
+        alertLight.color.setHex(0xf5a623);
+        waveMat.color.setHex(0x2a2a1a);
+        waveMat.emissive.setHex(0x1a1a0a);
+    } else {
+        alertPill.className = 'hud-alert-pill';
+        alertText.textContent = 'Ramu';
+        alertLight.intensity *= 0.92; // smooth fade
+        waveMat.color.lerp(new THREE.Color(0x1a3a6a), 0.05);
+        waveMat.emissive.lerp(new THREE.Color(0x0a1a3a), 0.05);
+    }
+}
+
+function showFlash(icon, text, sub) {
+    flashIcon.textContent = icon;
+    flashText.textContent = text;
+    flashSub.textContent = sub;
+    centerFlash.classList.add('visible');
+    if (flashTimeout) clearTimeout(flashTimeout);
+    flashTimeout = setTimeout(() => centerFlash.classList.remove('visible'), 2000);
+}
+
+// View switching
+document.querySelectorAll('.hud-view').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.hud-view').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentView = btn.dataset.view;
+
+        waveMesh.visible = currentView === 'wave';
+        wireMesh.visible = currentView === 'wave';
+        roomGroup.visible = currentView === 'room';
+        spectrumGroup.visible = currentView === 'spectrum';
+        gridHelper.visible = currentView !== 'room';
+    });
+});
+
+sensRange.addEventListener('input', () => {
+    sensitivity = parseFloat(sensRange.value);
+    sensDisp.textContent = sensitivity.toFixed(1) + 'x';
+});
+
+btnRecal3.addEventListener('click', () => {
+    calibrated = false;
+    calibCount = 0;
+    rssiBuffer = [];
+    filteredRssi = [];
+    csiBuffer = [];
+    loadingEl.classList.remove('hidden');
+});
+
+btnPause3.addEventListener('click', () => {
+    paused = !paused;
+    btnPause3.textContent = paused ? '▶' : '⏸';
+});
+
+// ═══════════════════════════════════════
+// RENDER LOOP
+// ═══════════════════════════════════════
+let lastTick = 0;
+const tickInterval = 1000 / SAMPLE_RATE;
+let latestResult = null;
+
+function animate(timestamp) {
+    requestAnimationFrame(animate);
+
+    // Signalų apdorojimas fiksuotu dažniu
+    if (!paused && timestamp - lastTick >= tickInterval) {
+        lastTick = timestamp;
+        const sample = generateSample();
+        latestResult = processSignal(sample);
+        updateHUD(latestResult);
+    }
+
+    // 3D atnaujinimai (kiekviename frame)
+    updateCamera();
+
+    if (currentView === 'wave') {
+        updateWaveSurface(latestResult);
+    } else if (currentView === 'room') {
+        updateRoomView(latestResult);
+    } else if (currentView === 'spectrum') {
+        updateSpectrum(latestResult);
+    }
+
+    // Dalelės
+    particles.rotation.y += 0.0003;
+
+    renderer.render(scene, camera);
+}
+
+// Resize
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Paleisti
+animate(0);
+
+</script>
+</body>
+</html>
